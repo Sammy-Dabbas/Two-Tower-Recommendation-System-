@@ -1,19 +1,19 @@
-#Real Time recommendation Engine
+# Real Time recommendation Engine
 
 Building a production ready two-tower recommendation system from scratch. 
 
-##Status 
+## Status 
 step 1: Data preprocessing 
 
-##Tech Stack 
+## Tech Stack 
 pytorch
 FAISS
 FastAPI
 Redis + kafka 
 
-#Dataset 
+# Dataset 
 MovieLens 25 million ratings 
 
-##Goal
+## Goal
 Two-Tower neural network 
 Real time updates via event streaming 
