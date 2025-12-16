@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+venv/
+*.egg-info/
+data/
+*.csv
+*.zip
+.vscode/
+.idea/
+.DS_Store
