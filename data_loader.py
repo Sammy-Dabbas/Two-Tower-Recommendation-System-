@@ -8,6 +8,3 @@ def load_movielens(filepath):
                     names=['user_id', 'item_id', 'rating', 'timestamp'])
     return df 
 
-df = load_movielens(DATA_FILE_PATH)
-
-print(df)
