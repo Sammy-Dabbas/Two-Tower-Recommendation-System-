@@ -102,31 +102,6 @@ def evaluate_bpr(model, test_data):
         
 
 
-def evaluate_recall_at_k(model, test_data, k=10): 
-      model.eval()
-
-      recalls = []
-
-      with torch.no_grad():
-          for user_ids, item_ids, ratings in test_data:
-              # Get predictions
-              predictions = model(user_ids, item_ids)
-
-              # Find items the user actually liked (rating >= 4)
-              relevant = (ratings >= 4.0)
-
-              # Find top-k predicted items
-              _, top_k_indices = torch.topk(predictions, min(k, len(predictions)))
-
-              # Check how many top-k items were actually relevant
-              if relevant.sum() > 0:  # Only if there are relevant items
-                  recall = relevant[top_k_indices].float().sum() / relevant.sum()
-                  recalls.append(recall.item())
-
-      avg_recall = sum(recalls) / len(recalls) if recalls else 0
-      print(f"Recall@{k}: {avg_recall:.4f}")
-      return avg_recall
-
 df = load_movielens(DATA_FILE_PATH)
 df = df.sort_values('timestamp')
 
