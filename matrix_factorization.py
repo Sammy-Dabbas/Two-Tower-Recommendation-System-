@@ -4,8 +4,10 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 import numpy as np
+from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
 from data_loader import load_movielens
+
 
 DATA_FILE_PATH = 'data/ml-100k/u.data'
 
@@ -76,8 +78,54 @@ def train_model(model, train_data, num_epochs=10):
             optimizer.step()
         print(f"Epoch {epoch + 1}, loss: {loss.item():.4f}")
 
+def evaluate_bpr(model, test_data):
+      model.eval()
+
+      pos_scores_list = []
+      neg_scores_list = []
+
+      with torch.no_grad():
+          for user_ids, pos_items, neg_items in test_data:
+              pos_scores = model(user_ids, pos_items)
+              neg_scores = model(user_ids, neg_items)
+
+              pos_scores_list.append(pos_scores.mean().item())
+              neg_scores_list.append(neg_scores.mean().item())
+
+      avg_pos = sum(pos_scores_list) / len(pos_scores_list)
+      avg_neg = sum(neg_scores_list) / len(neg_scores_list)
+
+      print(f"Avg positive score: {avg_pos:.4f}")
+      print(f"Avg negative score: {avg_neg:.4f}")
+      print(f"Difference: {avg_pos - avg_neg:.4f}")
+
+        
 
 
+def evaluate_recall_at_k(model, test_data, k=10): 
+      model.eval()
+
+      recalls = []
+
+      with torch.no_grad():
+          for user_ids, item_ids, ratings in test_data:
+              # Get predictions
+              predictions = model(user_ids, item_ids)
+
+              # Find items the user actually liked (rating >= 4)
+              relevant = (ratings >= 4.0)
+
+              # Find top-k predicted items
+              _, top_k_indices = torch.topk(predictions, min(k, len(predictions)))
+
+              # Check how many top-k items were actually relevant
+              if relevant.sum() > 0:  # Only if there are relevant items
+                  recall = relevant[top_k_indices].float().sum() / relevant.sum()
+                  recalls.append(recall.item())
+
+      avg_recall = sum(recalls) / len(recalls) if recalls else 0
+      print(f"Recall@{k}: {avg_recall:.4f}")
+      return avg_recall
 
 df = load_movielens(DATA_FILE_PATH)
 df = df.sort_values('timestamp')
@@ -97,3 +145,4 @@ test_loader = DataLoader(test_dataset, batch_size=1024, shuffle=True)
 
 model = MatrixFactorization(num_users, num_items, embedding_dim=50)
 train_model(model, train_loader, num_epochs = 10) 
+evaluate_bpr(model, test_loader)
