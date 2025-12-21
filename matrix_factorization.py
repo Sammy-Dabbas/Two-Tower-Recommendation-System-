@@ -43,15 +43,82 @@ class MatrixFactorization(nn.Module):
         super().__init__()
         self.user_embedding = nn.Embedding(num_users, embedding_dim)
         self.item_embedding = nn.Embedding(num_items, embedding_dim)
+        self.user_bias = nn.Embedding(num_users, 1)
+        self.item_bias = nn.Embedding(num_items, 1)
+        self.global_bias = nn.Parameter(torch.zeros(1))
+
         nn.init.xavier_normal_(self.user_embedding.weight.data)
         nn.init.xavier_normal_(self.item_embedding.weight.data)
+
+        nn.init.zeros_(self.user_bias.weight.data)
+        nn.init.zeros_(self.item_bias.weight.data)
 
     def forward(self, user_ids, item_ids): 
         user_emb = self.user_embedding(user_ids)
         item_emb = self.item_embedding(item_ids)
         scores = (user_emb * item_emb).sum(dim=1)
+
+        scores = scores + self.user_bias(user_ids).squeeze()
+        scores = scores + self.item_bias(item_ids).squeeze()
+        scores = scores + self.global_bias
+
         return scores
     
+class UserTower(nn.Module):
+      def __init__(self, num_users, embedding_dim=50, hidden_dim=128):
+          super().__init__()
+          self.user_embedding = nn.Embedding(num_users, embedding_dim)
+          self.fc1 = nn.Linear(50, 128)  
+          self.relu = nn.ReLU()            #Make negatives zero
+          self.fc2 = nn.Linear(128, 128)  
+          
+          nn.init.xavier_normal_(self.user_embedding.weight.data)
+      def forward(self, user_ids): 
+          x = self.user_embedding(user_ids)
+          x = self.fc1(x)
+          x = self.relu(x)
+          x = self.fc2(x)
+
+          return x 
+      
+class ItemTower(nn.Module):
+      def __init__(self, num_items, embedding_dim=50, hidden_dim=128, output_dim=128):
+          super().__init__()
+
+        
+          self.item_embedding = nn.Embedding(num_items, embedding_dim)
+
+          self.fc1 = nn.Linear(embedding_dim, hidden_dim)
+          self.fc2 = nn.Linear(hidden_dim, output_dim)
+          self.relu = nn.ReLU()
+
+          
+          nn.init.xavier_normal_(self.item_embedding.weight.data)
+
+      def forward(self, item_ids):
+          x = self.item_embedding(item_ids)
+          x = self.fc1(x)
+          x = self.relu(x)
+          x = self.fc2(x)
+          return x
+      
+
+class TwoTowerModel(nn.Module):
+      def __init__(self, num_users, num_items, embedding_dim=50, hidden_dim=128, output_dim=128):
+          super().__init__()
+
+          #Create both towers
+          self.user_tower = UserTower(num_users, embedding_dim, hidden_dim)
+          self.item_tower = ItemTower(num_items, embedding_dim, hidden_dim, output_dim)
+
+      def forward(self, user_ids, item_ids):
+          #Get representations from both towers
+          user_rep = self.user_tower(user_ids)
+          item_rep = self.item_tower(item_ids)
+
+          #Dot product 
+          scores = (user_rep * item_rep).sum(dim=1)
+          return scores
 class BPRLoss(nn.Module):
     def __init__(self): 
         super().__init__()
@@ -117,7 +184,16 @@ test_dataset = BPRDataset(test_df, num_items)
 train_loader = DataLoader(train_dataset, batch_size=1024, shuffle = True)
 test_loader = DataLoader(test_dataset, batch_size=1024, shuffle=True) 
 
+print("Training Matrix Factorization Baseline")
 
-model = MatrixFactorization(num_users, num_items, embedding_dim=50)
-train_model(model, train_loader, num_epochs = 10) 
-evaluate_bpr(model, test_loader)
+baseline_model = MatrixFactorization(num_users, num_items, embedding_dim=50)
+train_model(baseline_model, train_loader, num_epochs=10)
+evaluate_bpr(baseline_model, test_loader)
+
+#Train Two-Tower
+
+print("Training Two-Tower Model")
+
+two_tower_model = TwoTowerModel(num_users, num_items, embedding_dim=50, hidden_dim=128, output_dim=128)
+train_model(two_tower_model, train_loader, num_epochs=10)
+evaluate_bpr(two_tower_model, test_loader)
