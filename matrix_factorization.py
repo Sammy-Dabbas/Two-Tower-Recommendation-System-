@@ -166,7 +166,56 @@ def evaluate_bpr(model, test_data):
       print(f"Avg negative score: {avg_neg:.4f}")
       print(f"Difference: {avg_pos - avg_neg:.4f}")
 
+def recall_at_k(model, test_df, train_df, k=10):
+    """
+    Compute Recall@K: Of all items a user actually likes, what percentage appear in top-K recommendations
+    """
+    model.eval()
+    recalls = []
+
+    #Get the users who have liked items in test set where rating >= 4
+    test_liked = test_df[test_df['rating'] >= 4].groupby('user_id')['item_id'].apply(set).to_dict()
+
+    #Get items each user saw during training
+    train_seen = train_df.groupby('user_id')['item_id'].apply(set).to_dict()
+
+    with torch.no_grad():
+        for user_id, liked_items in test_liked.items():
+            # Items this user saw in training (don't recommend these!)
+            seen_items = train_seen.get(user_id, set())
+
+            # All items we could recommend (unseen items only)
+            all_items = set(range(1, num_items + 1)) - seen_items
+
+            if len(all_items) == 0 or len(liked_items) == 0:
+                continue
+
+            
         
+            #creating item and user tensors
+            all_items_list = list(all_items)
+            num_unseen = len(all_items_list)
+            user_tensor = torch.tensor([user_id - 1] * num_unseen, dtype=torch.long)
+            item_tensor = torch.tensor([item - 1 for item in all_items_list], dtype=torch.long)
+            #get scores 
+            scores  = model(user_tensor, item_tensor)
+        
+            k_actual = min(k, len(scores))
+            top_scores, top_indices = torch.topk(scores, k_actual)
+            top_items = [all_items_list[i] for i in top_indices.tolist()]
+          
+            #Caculate number of matched between top items and liked items
+            matches = set(top_items) & liked_items
+
+            recall = len(matches) / len(liked_items)
+            recalls.append(recall)
+
+            
+
+    #Return average recall across all users
+    return sum(recalls) / len(recalls) if recalls else 0.0
+
+
 
 
 df = load_movielens(DATA_FILE_PATH)
@@ -184,16 +233,18 @@ test_dataset = BPRDataset(test_df, num_items)
 train_loader = DataLoader(train_dataset, batch_size=1024, shuffle = True)
 test_loader = DataLoader(test_dataset, batch_size=1024, shuffle=True) 
 
-print("Training Matrix Factorization Baseline")
 
+
+print("Training Matrix Factorization Baseline")
 baseline_model = MatrixFactorization(num_users, num_items, embedding_dim=50)
 train_model(baseline_model, train_loader, num_epochs=10)
 evaluate_bpr(baseline_model, test_loader)
-
-#Train Two-Tower
+baseline_recall = recall_at_k(baseline_model, test_df, train_df, k=10)
+print(f"Baseline Recall@10: {baseline_recall:.4f}")
 
 print("Training Two-Tower Model")
-
-two_tower_model = TwoTowerModel(num_users, num_items, embedding_dim=50, hidden_dim=128, output_dim=128)
-train_model(two_tower_model, train_loader, num_epochs=10)
-evaluate_bpr(two_tower_model, test_loader)
+baseline_model = MatrixFactorization(num_users, num_items, embedding_dim=50)
+train_model(baseline_model, train_loader, num_epochs=10)
+evaluate_bpr(baseline_model, test_loader)
+baseline_recall = recall_at_k(baseline_model, test_df, train_df, k=10)
+print(f"Baseline Recall@10: {baseline_recall:.4f}")
