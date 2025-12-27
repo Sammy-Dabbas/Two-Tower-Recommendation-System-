@@ -243,8 +243,10 @@ baseline_recall = recall_at_k(baseline_model, test_df, train_df, k=10)
 print(f"Baseline Recall@10: {baseline_recall:.4f}")
 
 print("Training Two-Tower Model")
-baseline_model = MatrixFactorization(num_users, num_items, embedding_dim=50)
-train_model(baseline_model, train_loader, num_epochs=10)
-evaluate_bpr(baseline_model, test_loader)
-baseline_recall = recall_at_k(baseline_model, test_df, train_df, k=10)
-print(f"Baseline Recall@10: {baseline_recall:.4f}")
+two_tower_model = TwoTowerModel(num_users, num_items, embedding_dim=50, hidden_dim=128, output_dim=128)
+train_model(two_tower_model, train_loader, num_epochs=10)
+evaluate_bpr(two_tower_model, test_loader)
+two_tower_recall = recall_at_k(two_tower_model, test_df, train_df, k=10)
+print(f"Two-Tower Recall@10: {two_tower_recall:.4f}")
+
+
