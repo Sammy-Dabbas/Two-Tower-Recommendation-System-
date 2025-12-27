@@ -3,6 +3,8 @@ import numpy as np
 import faiss
 from matrix_factorization import TwoTowerModel
 import time 
+
+FILENAME = "item_index.faiss"
 def compute_item_embeddings(model, num_items):
       """
       Extract embeddings for ALL items from trained model.
@@ -14,18 +16,19 @@ def compute_item_embeddings(model, num_items):
       return item_embeddings.cpu().numpy()
 def build_faiss_index(item_embeddings): 
     embedding_dim = item_embeddings.shape[1]  # 128
-    index = faiss.IndexFlatIP(embedding_dim)
+    index = faiss.IndexFlatIP(embedding_dim)  #will use HNSW for larger datasets 
     index.add(item_embeddings.astype('float32'))
     return index
 
-
-
+def saveIndex(index): 
+    faiss.write_index(index, FILENAME)
+    print(f"Index saved to {FILENAME}")
 
 if __name__ == "__main__":
       from matrix_factorization import load_movielens, BPRDataset, train_model
       from torch.utils.data import DataLoader
 
-      # Quick training for testing
+      #Quick training for testing
       df = load_movielens('data/ml-100k/u.data')
       train_df = df[:int(len(df)*0.8)]
       num_items = df['item_id'].max()
@@ -35,7 +38,7 @@ if __name__ == "__main__":
       train_loader = DataLoader(train_dataset, batch_size=1024, shuffle=True)
 
       model = TwoTowerModel(num_users, num_items, embedding_dim=50, hidden_dim=128, output_dim=128)
-      train_model(model, train_loader, num_epochs=10)  # Just 3 for testing
+      train_model(model, train_loader, num_epochs=10)  
 
       print("Computing item embeddings")
       embeddings = compute_item_embeddings(model, num_items)
@@ -64,6 +67,9 @@ if __name__ == "__main__":
         faiss_time = (time.time() - start_faiss) * 1000
         print(f"FAISS time: {faiss_time:.2f}ms")
         print(f"Top 10 items: {item_ids[0]}")
+
+      saveIndex(index)
+      torch.save(model.state_dict(), "two_tower_model.pth")
      
     
 
