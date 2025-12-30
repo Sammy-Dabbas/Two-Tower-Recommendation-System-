@@ -8,3 +8,5 @@ data/
 .vscode/
 .idea/
 .DS_Store
+.faiss
+.pth
