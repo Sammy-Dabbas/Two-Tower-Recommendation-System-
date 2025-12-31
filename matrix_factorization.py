@@ -12,7 +12,11 @@ import pandas as pd
 
 
 
+#Random seeds
+SEED = 42
 
+np.random.seed(SEED)
+torch.manual_seed(SEED)
 
     
 class BPRDataset(Dataset):
@@ -94,7 +98,7 @@ class UserTower(nn.Module):
           nn.init.xavier_normal_(self.user_embedding.weight.data)
       def forward(self, user_ids, user_features): 
           user_emb = self.user_embedding(user_ids)
-          age = user_features[:, 0:1]  # First column, keep 2D
+          age = user_features[:, 0:1]  #First column, keep 2D
           gender_idx = user_features[:, 1].long()  # Second column, convert to long
           occupation_idx = user_features[:, 2].long()
           gender_emb = self.gender_embedding(gender_idx)
