@@ -9,16 +9,19 @@ from sklearn.model_selection import train_test_split
 from data_loader import load_movielens_with_features
 from sklearn.preprocessing import OneHotEncoder
 import pandas as pd
+from config import load_config
 
+config = load_config()
+#Load training variables
 
-
-#Random seeds
-SEED = 42
-
+#Random seed
+SEED = config['training']['random_seed']
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 
-    
+batch_size = config['training']['batch_size']
+
+
 class BPRDataset(Dataset):
       def __init__(self, df, num_items, item_feature_lookup):
         positive_df = df[df['rating'] >= 4].copy()
@@ -135,9 +138,11 @@ class ItemTower(nn.Module):
       
 
 class TwoTowerModel(nn.Module):
-      def __init__(self, num_users, num_items, num_genders, num_occupations, embedding_dim=50, hidden_dim=128, output_dim=128):
+      def __init__(self, num_users, num_items, num_genders, num_occupations, config):
           super().__init__()
-
+          embedding_dim = config['model']['embedding_dim']
+          hidden_dim = config['model']['hidden_dim']
+          output_dim = config['model']['output_dim']         
           #Create both towers
           self.user_tower = UserTower(num_users, num_genders, num_occupations, embedding_dim, hidden_dim)
           self.item_tower = ItemTower(num_items, embedding_dim, hidden_dim, output_dim)
@@ -159,8 +164,13 @@ class BPRLoss(nn.Module):
         loss = -F.logsigmoid(x_uij).mean()
         return loss 
 
-def train_model(model, train_data, num_epochs=10): 
-    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=0.000)
+def train_model(model, train_data, config):
+
+    num_epochs = config['training']['num_epochs']
+    learning_rate = config['training']['learning_rate']
+    weight_decay = config['training']['weight_decay']
+
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     bpr_loss = BPRLoss()
     for epoch in range(num_epochs): 
         for user_ids, pos_items, neg_items, user_feat, pos_item_feat, neg_item_feat in train_data: 
@@ -267,18 +277,7 @@ genre_cols = ['unknown', 'Action', 'Adventure', 'Animation', 'Children',
                 'Sci-Fi', 'Thriller', 'War', 'Western']
 item_lookup_df = df[['item_id'] + genre_cols].drop_duplicates('item_id').sort_values('item_id')
 item_feature_lookup = item_lookup_df[genre_cols].values
-# encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
-# categorical_columns = ["gender"]
 
-# one_hot = encoder.fit_transform(df[categorical_columns])
-
-# one_hot_df = pd.DataFrame(
-#     one_hot,
-#     columns=encoder.get_feature_names_out(categorical_columns),
-#     index=df.index,
-# ).astype(int)
-# df = pd.concat([df, one_hot_df], axis=1)
-# df = df.drop('gender', axis=1)
 split_idx = int(len(df) * 0.8)
 train_df = df[:split_idx]
 test_df = df[split_idx:]
@@ -297,8 +296,8 @@ num_occupations = df['occupation'].nunique()
 train_dataset = BPRDataset(train_df, num_items, item_feature_lookup)
 test_dataset = BPRDataset(test_df, num_items, item_feature_lookup)
 
-train_loader = DataLoader(train_dataset, batch_size=1024, shuffle = True)
-test_loader = DataLoader(test_dataset, batch_size=1024, shuffle=True) 
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle = True)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True) 
 
 
 
@@ -311,8 +310,8 @@ test_loader = DataLoader(test_dataset, batch_size=1024, shuffle=True)
 # print(f"Baseline Recall@10: {baseline_recall:.4f}")
 
 print("Training Two-Tower Model")
-two_tower_model = TwoTowerModel(num_users, num_items, num_genders, num_occupations, embedding_dim=50, hidden_dim=128, output_dim=128)
-train_model(two_tower_model, train_loader, num_epochs=10)
+two_tower_model = TwoTowerModel(num_users, num_items, num_genders, num_occupations, config)
+train_model(two_tower_model, train_loader, config)
 evaluate_bpr(two_tower_model, test_loader)
 two_tower_recall = recall_at_k(two_tower_model, test_df, train_df, item_feature_lookup, k=10)
 print(f"Two-Tower Recall@10: {two_tower_recall:.4f}")

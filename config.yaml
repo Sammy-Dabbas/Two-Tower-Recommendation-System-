@@ -1,0 +1,18 @@
+dataset: 
+  name: "movielens-100k"
+  data_path: "data/ml-100k/u.data"
+  user_path: "data/ml-100k/u.user"
+  item_path: "data/ml-100k/u.item"
+  seperator: "\t"
+
+model: 
+  embedding_dim: 50
+  hidden_dim: 128
+  output_dim: 128
+
+training: 
+  batch_size: 1024
+  num_epochs: 10
+  learning_rate: 0.001
+  random_seed: 42
+  weight_decay: 0.0005
