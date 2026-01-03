@@ -15,15 +15,7 @@ from loaders.factory import get_data_loader
 
 config = load_config()
 data = get_data_loader(config)
-#  return { 
-#             "interactions": df,
-#             "user_features": user_features_numpy,
-#             "item_features": item_features_numpy, 
-#             "user_features_dim": 24,
-#             "item_features_dim": 19,
-#             "num_users": num_users,
-#             "num_items": num_items
-#       }
+
 
 print(f"Dataset: {config['dataset']['name']}\n")
 
@@ -102,11 +94,6 @@ class MatrixFactorization(nn.Module):
 class UserTower(nn.Module):
       def __init__(self, num_users, user_feature_config,  embedding_dim, hidden_dim):
           super().__init__()
-    #       "user_feature_config": [
-    #       {"name": "age", "type": "continuous", "position": 0},
-    #       {"name": "gender", "type": "embedding", "position": 1, "vocab_size": 2, "embedding_dim": 4},
-    #       {"name": "occupation", "type": "embedding", "position": 2, "vocab_size": 21, "embedding_dim": 12}
-    #   ],
           self.user_embedding = nn.Embedding(num_users, embedding_dim)
           self.feature_config = user_feature_config
           self.feature_embedding = nn.ModuleDict()
