@@ -54,21 +54,45 @@ def load_movielens_100k(dataset_config):
       user_lookup_df = user_df.drop_duplicates('user_id').sort_values('user_id')
 
       age_norm_array = (user_lookup_df['age'].values / 100.0).reshape(-1, 1)
-      gender_onehot_array = pd.get_dummies(user_lookup_df['gender']).values
-      occupation_onehot_array = pd.get_dummies(user_lookup_df['occupation']).values
+      gender_idx = user_df['gender'].astype('category').cat.codes.values.reshape(-1, 1)
+      occupation_idx = user_df['occupation'].astype('category').cat.codes.values.reshape(-1, 1)
       
-      user_features_numpy = np.concatenate([age_norm_array, gender_onehot_array, occupation_onehot_array], axis=1)
- 
+
+      
+      user_features_numpy = np.concatenate([age_norm_array, gender_idx, occupation_idx], axis=1)
+     
+
+      
       num_items = df['item_id'].max()
       num_users = df['user_id'].max()
+        
+        
+        
+        
+      return {
+      # User features: [num_users, 3] array with [age_normalized, gender_idx, occupation_idx]
+      "user_features": user_features_numpy,
 
-    
-      return { 
-            "interactions": df,
-            "user_features": user_features_numpy,
-            "item_features": item_features_numpy, 
-            "user_features_dim": 24,
-            "item_features_dim": 19,
-            "num_users": num_users,
-            "num_items": num_items
-      }
+      # User feature metadata
+      "user_feature_config": [
+          {"name": "age", "type": "continuous", "position": 0},
+          {"name": "gender", "type": "embedding", "position": 1, "vocab_size": 2, "embedding_dim": 4},
+          {"name": "occupation", "type": "embedding", "position": 2, "vocab_size": 21, "embedding_dim": 12}
+      ],
+
+      # Item features: [num_items, 19] array with genre values
+      "item_features": item_features_numpy,
+
+      # Item feature metadata
+      "item_feature_config": [
+          {"name": "genres", "type": "multi_hot", "position": 0, "size": 19}
+      ],
+
+      # Interactions DataFrame 
+      "interactions": df,
+
+      # Counts
+      "num_users": num_users,
+      "num_items": num_items
+  }
+     
