@@ -2,8 +2,13 @@ import torch
 import numpy as np
 import faiss
 import time 
-from data_loader import load_movielens_with_features
+from config.config import load_config
+from loaders.factory import get_data_loader
+  # Load config
 
+
+config = load_config()
+data = get_data_loader(config)
 
 
 FILENAME = "item_index.faiss"
@@ -33,47 +38,46 @@ if __name__ == "__main__":
       
 
       #Quick training for testing
-      df = load_movielens_with_features()
-      
+      df = data['interactions']
       df = df.sort_values('timestamp')
-      genre_cols = ['unknown', 'Action', 'Adventure', 'Animation', 'Children',
-                'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy',
-                'Film-Noir', 'Horror', 'Musical', 'Mystery', 'Romance',
-                'Sci-Fi', 'Thriller', 'War', 'Western']
-      item_lookup_df = df[['item_id'] + genre_cols].drop_duplicates('item_id').sort_values('item_id')
-      item_feature_lookup = item_lookup_df[genre_cols].values
+     
       train_df = df[:int(len(df)*0.8)]
       num_items = df['item_id'].max()
       num_users = df['user_id'].max()
       
 
 
-      num_genders = df['gender'].nunique()
-      num_occupations = df['occupation'].nunique()
+   
       
 
     
       from matrix_factorization import BPRDataset, train_model
       from torch.utils.data import DataLoader
       from matrix_factorization import TwoTowerModel
-      train_dataset = BPRDataset(train_df, num_items, item_feature_lookup)
+      item_features_lookup = data['item_features']
+      user_features_lookup = data['user_features']
+      user_feature_dim = data['user_features_dim']
+      item_feature_dim = data['item_features_dim']
+
+      train_dataset = BPRDataset(train_df, num_items, user_features_lookup, item_features_lookup)
       train_loader = DataLoader(train_dataset, batch_size=1024, shuffle=True)
       
 
-      model = TwoTowerModel(num_users, num_items, num_genders, num_occupations, embedding_dim=50, hidden_dim=128, output_dim=128)
-      train_model(model, train_loader, num_epochs=10)  
+      model = TwoTowerModel(num_users, num_items, user_feature_dim, item_feature_dim, config)
+      train_model(model, train_loader, config)
+
 
       print("Computing item embeddings")
-      embeddings = compute_item_embeddings(model, num_items, item_feature_lookup)
+      embeddings = compute_item_embeddings(model, num_items, item_features_lookup)
       print(f"Shape: {embeddings.shape}")
       index = build_faiss_index(embeddings)
      
      
 
       start_faiss = time.time()
-    
+      user_id = 196
       with torch.no_grad():
-        user_emb = model.user_tower(torch.tensor([196]), torch.tensor([df[df['user_id'] == 196][['age', 'gender', 'occupation']].iloc[0].values], dtype=torch.float32)).cpu().numpy()
+        user_emb = model.user_tower(torch.tensor([196]), torch.tensor([user_features_lookup[user_id - 1]], dtype=torch.float32)).cpu().numpy()
         scores, item_ids = index.search(user_emb, k=10)
         faiss_time = (time.time() - start_faiss) * 1000
         print(f"FAISS time: {faiss_time:.2f}ms")

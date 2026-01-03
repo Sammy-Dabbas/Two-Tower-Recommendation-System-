@@ -6,13 +6,22 @@ import torch.nn.functional as F
 import numpy as np
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
-from data_loader import load_movielens_with_features
 from sklearn.preprocessing import OneHotEncoder
 import pandas as pd
-from config import load_config
+from config.config import load_config
+from loaders.factory import get_data_loader
+  # Load config
+
 
 config = load_config()
-#Load training variables
+data = get_data_loader(config)
+
+
+print(f"Dataset: {config['dataset']['name']}\n")
+
+
+
+
 
 #Random seed
 SEED = config['training']['random_seed']
@@ -23,21 +32,15 @@ batch_size = config['training']['batch_size']
 
 
 class BPRDataset(Dataset):
-      def __init__(self, df, num_items, item_feature_lookup):
+      def __init__(self, df, num_items, user_feature_lookup, item_feature_lookup):
         positive_df = df[df['rating'] >= 4].copy()
         self.users = positive_df['user_id'].values - 1
         self.pos_items = positive_df['item_id'].values - 1 
         self.num_items = num_items
 
-        self.user_features = positive_df[['age', 'gender', 'occupation']].values 
-        item_genres = ['unknown', 'Action', 'Adventure', 'Animation', 'Children',
-                        'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy',
-                        'Film-Noir', 'Horror', 'Musical', 'Mystery', 'Romance',
-                        'Sci-Fi', 'Thriller', 'War', 'Western'] 
-        self.pos_item_features = positive_df[item_genres].values
-        item_df = df[['item_id'] + item_genres].drop_duplicates('item_id')
-        item_df = item_df.sort_values('item_id')
+        
         self.item_feature_lookup = item_feature_lookup
+        self.user_feature_lookup = user_feature_lookup
 
       def __len__(self): 
             return len(self.users)
@@ -48,8 +51,8 @@ class BPRDataset(Dataset):
 
           #Sample one random negative item
           neg_item = np.random.randint(0, self.num_items)
-          user_features = self.user_features[idx]
-          pos_item_feat = self.pos_item_features[idx]
+          user_features = self.user_feature_lookup[user]
+          pos_item_feat = self.item_feature_lookup[pos_item]
           neg_item_feat = self.item_feature_lookup[neg_item]
 
           return (
@@ -88,12 +91,13 @@ class MatrixFactorization(nn.Module):
         return scores
     
 class UserTower(nn.Module):
-      def __init__(self, num_users, num_genders, num_occupations, embedding_dim=50, gender_embedding_dim = 4, occupation_embedding_dim = 12, hidden_dim=128):
+      def __init__(self, num_users, user_feature_dim, embedding_dim, hidden_dim):
           super().__init__()
-          total_dims = embedding_dim + gender_embedding_dim + occupation_embedding_dim + 1
+         
+          total_dims = embedding_dim + user_feature_dim  
           self.user_embedding = nn.Embedding(num_users, embedding_dim)
-          self.gender_embedding = nn.Embedding(num_genders, gender_embedding_dim)
-          self.occupations_embedding = nn.Embedding(num_occupations, occupation_embedding_dim)
+          
+
           self.fc1 = nn.Linear(total_dims, hidden_dim)  
           self.relu = nn.ReLU()            #Make negatives zero
           self.fc2 = nn.Linear(hidden_dim, hidden_dim)  
@@ -101,13 +105,8 @@ class UserTower(nn.Module):
           nn.init.xavier_normal_(self.user_embedding.weight.data)
       def forward(self, user_ids, user_features): 
           user_emb = self.user_embedding(user_ids)
-          age = user_features[:, 0:1]  #First column, keep 2D
-          gender_idx = user_features[:, 1].long()  # Second column, convert to long
-          occupation_idx = user_features[:, 2].long()
-          gender_emb = self.gender_embedding(gender_idx)
-          occupation_emb = self.occupations_embedding(occupation_idx)
-          age_norm = age / 100.0
-          x = torch.cat([user_emb, gender_emb, occupation_emb, age_norm], dim=1)
+          
+          x = torch.cat([user_emb, user_features], dim=1)
           x = self.fc1(x)
           x = self.relu(x)
           x = self.fc2(x)
@@ -115,13 +114,13 @@ class UserTower(nn.Module):
           return x 
       
 class ItemTower(nn.Module):
-      def __init__(self, num_items, embedding_dim=50, hidden_dim=128, output_dim=128):
+      def __init__(self, num_items, item_feature_dim, embedding_dim, hidden_dim, output_dim):
           super().__init__()
-
-        
+         
+          total_dims = embedding_dim + item_feature_dim
           self.item_embedding = nn.Embedding(num_items, embedding_dim)
            
-          self.fc1 = nn.Linear(69, hidden_dim)
+          self.fc1 = nn.Linear(total_dims, hidden_dim)
           self.fc2 = nn.Linear(hidden_dim, output_dim)
           self.relu = nn.ReLU()
 
@@ -138,14 +137,14 @@ class ItemTower(nn.Module):
       
 
 class TwoTowerModel(nn.Module):
-      def __init__(self, num_users, num_items, num_genders, num_occupations, config):
+      def __init__(self, num_users, num_items,user_feature_dim, item_feature_dim, config):
           super().__init__()
           embedding_dim = config['model']['embedding_dim']
           hidden_dim = config['model']['hidden_dim']
           output_dim = config['model']['output_dim']         
           #Create both towers
-          self.user_tower = UserTower(num_users, num_genders, num_occupations, embedding_dim, hidden_dim)
-          self.item_tower = ItemTower(num_items, embedding_dim, hidden_dim, output_dim)
+          self.user_tower = UserTower(num_users, user_feature_dim, embedding_dim, hidden_dim)
+          self.item_tower = ItemTower(num_items, item_feature_dim, embedding_dim, hidden_dim, output_dim)
 
       def forward(self, user_ids, item_ids, user_features, item_features):
           #Get representations from both towers
@@ -207,7 +206,7 @@ def evaluate_bpr(model, test_data):
       print(f"Avg negative score: {avg_neg:.4f}")
       print(f"Difference: {avg_pos - avg_neg:.4f}")
 
-def recall_at_k(model, test_df, train_df, item_feature_lookup, k=10):
+def recall_at_k(model, test_df, train_df, num_items, user_features_lookup, item_feature_lookup, k=10):
     """
     Compute Recall@K: Of all items a user actually likes, what percentage appear in top-K recommendations
     """
@@ -227,7 +226,6 @@ def recall_at_k(model, test_df, train_df, item_feature_lookup, k=10):
 
             #All items we could recommend 
             all_items = set(range(1, num_items + 1)) - seen_items
-            train_items = len(test_df)
             if len(all_items) == 0 or len(liked_items) == 0:
                 continue
 
@@ -235,7 +233,7 @@ def recall_at_k(model, test_df, train_df, item_feature_lookup, k=10):
             #creating item and user tensors
             all_items_list = list(all_items)
             num_unseen = len(all_items_list)
-            user_features = test_df[test_df['user_id'] == user_id][['age', 'gender', 'occupation']].iloc[0].values
+            user_features = user_features_lookup[user_id - 1]
             user_tensor = torch.tensor([user_id - 1] * num_unseen, dtype=torch.long)
             user_features_tensor = torch.tensor([user_features] * num_unseen, dtype=torch.float32)
             item_tensor = torch.tensor([item - 1 for item in all_items_list], dtype=torch.long)
@@ -269,14 +267,9 @@ def recall_at_k(model, test_df, train_df, item_feature_lookup, k=10):
 
 
 
-df = load_movielens_with_features()
+df = data['interactions']
 df = df.sort_values('timestamp')
-genre_cols = ['unknown', 'Action', 'Adventure', 'Animation', 'Children',
-                'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy',
-                'Film-Noir', 'Horror', 'Musical', 'Mystery', 'Romance',
-                'Sci-Fi', 'Thriller', 'War', 'Western']
-item_lookup_df = df[['item_id'] + genre_cols].drop_duplicates('item_id').sort_values('item_id')
-item_feature_lookup = item_lookup_df[genre_cols].values
+
 
 split_idx = int(len(df) * 0.8)
 train_df = df[:split_idx]
@@ -288,13 +281,14 @@ test_df = df[split_idx:]
 num_items = df['item_id'].max()
 num_users = df['user_id'].max()
 
-num_genders = df['gender'].nunique()
-num_occupations = df['occupation'].nunique()
 
+user_feature_dim = data['user_features_dim']
+item_feature_dim = data['item_features_dim']
+item_features_lookup = data['item_features']
+user_features_lookup = data['user_features']
 
-
-train_dataset = BPRDataset(train_df, num_items, item_feature_lookup)
-test_dataset = BPRDataset(test_df, num_items, item_feature_lookup)
+train_dataset = BPRDataset(train_df, num_items, user_features_lookup, item_features_lookup)
+test_dataset = BPRDataset(test_df, num_items, user_features_lookup, item_features_lookup)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle = True)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True) 
@@ -310,10 +304,11 @@ test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 # print(f"Baseline Recall@10: {baseline_recall:.4f}")
 
 print("Training Two-Tower Model")
-two_tower_model = TwoTowerModel(num_users, num_items, num_genders, num_occupations, config)
+
+two_tower_model = TwoTowerModel(num_users, num_items, user_feature_dim, item_feature_dim, config)
 train_model(two_tower_model, train_loader, config)
 evaluate_bpr(two_tower_model, test_loader)
-two_tower_recall = recall_at_k(two_tower_model, test_df, train_df, item_feature_lookup, k=10)
+two_tower_recall = recall_at_k(two_tower_model, test_df, train_df, num_items, user_features_lookup, item_features_lookup, k=10)
 print(f"Two-Tower Recall@10: {two_tower_recall:.4f}")
 
 

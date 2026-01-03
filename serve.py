@@ -2,15 +2,25 @@ import torch
 import numpy as np
 import faiss
 from matrix_factorization import TwoTowerModel
-from data_loader import load_movielens_with_features
+from config.config import load_config
+from loaders.factory import get_data_loader
+  # Load config
 
-df = load_movielens_with_features()
+
+config = load_config()
+data = get_data_loader(config)
+
+df = data['interactions']
+
+
+print("loading model")
+item_features_lookup = data['item_features']
+user_features_lookup = data['user_features']
+user_feature_dim = data['user_features_dim']
+item_feature_dim = data['item_features_dim']
 num_items = df['item_id'].max()
 num_users = df['user_id'].max()
-num_genders = df['gender'].nunique()
-num_occupations = df['occupation'].nunique()
-print("loading model")
-model = TwoTowerModel(num_users, num_items, num_genders, num_occupations, embedding_dim=50, hidden_dim=128, output_dim=128)
+model = TwoTowerModel(num_users, num_items, user_feature_dim, item_feature_dim, config)
 
 model.load_state_dict(torch.load("two_tower_model.pth"))
 model.eval()
@@ -22,12 +32,12 @@ print(f"Index loaded with {index.ntotal} items")
 
 def get_recommendations(user_id, k=10): 
     with torch.no_grad(): 
-          user_emb = model.user_tower(torch.tensor([user_id]), torch.tensor([df[df['user_id'] == user_id][['age', 'gender', 'occupation']].iloc[0].values])).cpu().numpy()
+          user_emb = model.user_tower(torch.tensor([196]), torch.tensor([user_features_lookup[user_id - 1]], dtype=torch.float32)).cpu().numpy()
     scores, item_ids = index.search(user_emb, k=k)
     return item_ids[0], scores[0]
 
 user_id = 196
-print("Top 10 for user {user_id}:")
+print(f"Top 10 for user {user_id}:")
 items, scores = get_recommendations(user_id, k=10)
 print(f"items: {items}")
 print(f"scores: {scores}")
